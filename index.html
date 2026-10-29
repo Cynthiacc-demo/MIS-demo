@@ -44,12 +44,109 @@
         <li>逾期未歸還者，將停權一個月。</li>
       </ul>
     </section>
+
+    <section>
+      <h2>新增器材</h2>
+      <form id="equipment-form" class="card equipment-form">
+        <label for="equipment-name">名稱</label>
+        <input type="text" id="equipment-name" required>
+
+        <label for="equipment-type">類型</label>
+        <select id="equipment-type" required>
+          <option value="">請選擇類型</option>
+          <option value="相機">相機</option>
+          <option value="投影機">投影機</option>
+          <option value="麥克風">麥克風</option>
+          <option value="腳架">腳架</option>
+        </select>
+
+        <label for="equipment-asset-no">財產編號</label>
+        <input type="text" id="equipment-asset-no" required>
+
+        <button type="submit">新增</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>器材清單</h2>
+      <ul id="inventory-list" class="inventory-list"></ul>
+    </section>
   </main>
 
-  <footer>
-    <p>線上查詢器材狀態功能即將推出</p>
-  </footer>
+  <script>
+    const STORAGE_KEY = "equipmentList";
 
-  <!-- 之後的 JavaScript 請寫在這裡 -->
+    const form = document.getElementById("equipment-form");
+    const nameInput = document.getElementById("equipment-name");
+    const typeSelect = document.getElementById("equipment-type");
+    const assetNoInput = document.getElementById("equipment-asset-no");
+    const listEl = document.getElementById("inventory-list");
+
+    function loadEquipment() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveEquipment(items) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      } catch (error) {
+        alert("無法儲存資料，請檢查瀏覽器設定。");
+      }
+    }
+
+    function renderEquipment() {
+      const items = loadEquipment();
+      listEl.innerHTML = "";
+
+      if (items.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "card empty";
+        empty.textContent = "目前尚無器材資料。";
+        listEl.appendChild(empty);
+        return;
+      }
+
+      items.forEach(function (item) {
+        const li = document.createElement("li");
+        li.className = "card";
+
+        const title = document.createElement("h3");
+        title.textContent = item.name;
+
+        const info = document.createElement("p");
+        info.textContent = "類型：" + item.type + "　財產編號：" + item.assetNo;
+
+        li.appendChild(title);
+        li.appendChild(info);
+        listEl.appendChild(li);
+      });
+    }
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+
+      const name = nameInput.value.trim();
+      const type = typeSelect.value;
+      const assetNo = assetNoInput.value.trim();
+
+      if (!name || !type || !assetNo) {
+        return;
+      }
+
+      const items = loadEquipment();
+      items.push({ name: name, type: type, assetNo: assetNo });
+      saveEquipment(items);
+
+      form.reset();
+      renderEquipment();
+    });
+
+    renderEquipment();
+  </script>
 </body>
 </html>
