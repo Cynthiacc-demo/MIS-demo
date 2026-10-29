@@ -125,3 +125,46 @@ footer p {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.equipment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.equipment-form label {
+  font-weight: 600;
+}
+
+.equipment-form input,
+.equipment-form select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.equipment-form button {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.inventory-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.empty {
+  color: var(--text-muted);
+}
