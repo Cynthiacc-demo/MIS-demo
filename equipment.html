@@ -18,6 +18,96 @@
 
   <main>
     <h1 class="page-title">設備管理</h1>
+
+    <section>
+      <h2>器材清單</h2>
+      <ul id="inventory-list" class="inventory-list">
+        <li class="card empty">載入中…</li>
+      </ul>
+    </section>
   </main>
+
+  <script>
+    // 請換成你自己的 Supabase 專案資訊（Project Settings → API）
+    const SUPABASE_URL = "https://你的專案代號.supabase.co";
+    const SUPABASE_ANON_KEY = "你的 anon public key";
+
+    const STATUS_LABELS = {
+      available: "可借",
+      borrowed: "借出中",
+      repair: "維修中",
+      retired: "已報廢"
+    };
+
+    const listEl = document.getElementById("inventory-list");
+
+    function showMessage(text) {
+      listEl.innerHTML = "";
+      const li = document.createElement("li");
+      li.className = "card empty";
+      li.textContent = text;
+      listEl.appendChild(li);
+    }
+
+    function renderEquipment(items) {
+      listEl.innerHTML = "";
+
+      if (items.length === 0) {
+        showMessage("目前尚無器材資料。");
+        return;
+      }
+
+      items.forEach(function (item) {
+        const li = document.createElement("li");
+        li.className = "card equipment-item";
+
+        const text = document.createElement("div");
+
+        const title = document.createElement("h3");
+        title.textContent = item.name;
+
+        const info = document.createElement("p");
+        info.textContent = "類別：" + item.category + "　設備編號：" + item.equipment_id;
+
+        text.appendChild(title);
+        text.appendChild(info);
+
+        const badge = document.createElement("span");
+        badge.className = "status status-" + item.status;
+        badge.textContent = STATUS_LABELS[item.status] || item.status;
+
+        li.appendChild(text);
+        li.appendChild(badge);
+        listEl.appendChild(li);
+      });
+    }
+
+    async function loadEquipment() {
+      const url = SUPABASE_URL + "/rest/v1/equipment"
+        + "?select=equipment_id,name,category,status"
+        + "&order=equipment_id.asc";
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: "Bearer " + SUPABASE_ANON_KEY
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        const items = await response.json();
+        renderEquipment(items);
+      } catch (error) {
+        showMessage("無法載入器材資料，請稍後再試。");
+        console.error(error);
+      }
+    }
+
+    loadEquipment();
+  </script>
 </body>
 </html>
