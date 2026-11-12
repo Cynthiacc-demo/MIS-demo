@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>助教登入｜資管系器材借用系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <ul>
+      <li><a href="index.html">首頁</a></li>
+      <li><a href="equipment.html">設備管理</a></li>
+      <li><a href="loans.html">借還管理</a></li>
+      <li><a href="report.html">借用統計</a></li>
+      <li><a href="login.html" aria-current="page">助教登入</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <h1 class="page-title">助教登入</h1>
+
+    <section>
+      <form id="login-form" class="card auth-form">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" autocomplete="username" required>
+
+        <label for="login-password">密碼</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+
+        <button type="submit" id="login-button">登入</button>
+        <p id="login-message" class="form-message" role="alert"></p>
+      </form>
+
+      <div id="logged-in" class="card auth-form" hidden>
+        <p id="logged-in-text"></p>
+        <a href="equipment.html">前往設備管理</a>
+        <button type="button" id="logout-button">登出</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script>
+    // 請換成你自己的 Supabase 專案資訊（與 equipment.html 相同）
+    const SUPABASE_URL = "https://你的專案代號.supabase.co";
+    const SUPABASE_ANON_KEY = "你的 anon public key";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const loginForm = document.getElementById("login-form");
+    const emailInput = document.getElementById("login-email");
+    const passwordInput = document.getElementById("login-password");
+    const loginButton = document.getElementById("login-button");
+    const messageEl = document.getElementById("login-message");
+    const loggedInBox = document.getElementById("logged-in");
+    const loggedInText = document.getElementById("logged-in-text");
+    const logoutButton = document.getElementById("logout-button");
+
+    function isStaff(user) {
+      return Boolean(user && user.app_metadata && user.app_metadata.role === "staff");
+    }
+
+    function showForm() {
+      loginForm.hidden = false;
+      loggedInBox.hidden = true;
+    }
+
+    function showLoggedIn(user) {
+      loginForm.hidden = true;
+      loggedInBox.hidden = false;
+      loggedInText.textContent = "已登入：" + user.email;
+    }
+
+    async function init() {
+      const { data } = await sb.auth.getSession();
+      const session = data.session;
+
+      if (session && isStaff(session.user)) {
+        showLoggedIn(session.user);
+      } else {
+        showForm();
+      }
+    }
+
+    loginForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      messageEl.textContent = "";
+      loginButton.disabled = true;
+
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: emailInput.value.trim(),
+        password: passwordInput.value
+      });
+
+      loginButton.disabled = false;
+
+      if (error) {
+        messageEl.textContent = "登入失敗：帳號或密碼錯誤。";
+        return;
+      }
+
+      if (!isStaff(data.user)) {
+        await sb.auth.signOut();
+        messageEl.textContent = "此帳號沒有助教權限。";
+        return;
+      }
+
+      passwordInput.value = "";
+      showLoggedIn(data.user);
+    });
+
+    logoutButton.addEventListener("click", async function () {
+      await sb.auth.signOut();
+      showForm();
+    });
+
+    init();
+  </script>
+</body>
+</html>
