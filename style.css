@@ -243,3 +243,70 @@ footer p {
   min-height: 1.5em;
   color: #c53030;
 }
+
+.equipment-item {
+  flex-wrap: wrap;
+}
+
+.item-main {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.btn-small {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-warning {
+  background: #c05621;
+}
+
+.btn-danger {
+  background: #c53030;
+}
+
+.auth-form .btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.auth-form input[readonly] {
+  opacity: 0.7;
+}
+
+.auth-form select:disabled {
+  opacity: 0.7;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
