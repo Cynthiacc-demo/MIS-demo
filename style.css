@@ -230,6 +230,14 @@ footer p {
   cursor: wait;
 }
 
+.auth-form select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
 .form-message {
   margin: 0;
   min-height: 1.5em;
