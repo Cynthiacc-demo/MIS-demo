@@ -43,8 +43,36 @@
       </form>
     </section>
 
+    <section id="edit-section" hidden>
+      <h2>修改器材</h2>
+      <form id="edit-form" class="card auth-form">
+        <label for="edit-id">設備編號（不可修改）</label>
+        <input type="text" id="edit-id" readonly>
+
+        <label for="edit-name">名稱</label>
+        <input type="text" id="edit-name" required>
+
+        <label for="edit-category">類別</label>
+        <select id="edit-category" required>
+          <option value="相機">相機</option>
+          <option value="投影機">投影機</option>
+          <option value="麥克風">麥克風</option>
+          <option value="腳架">腳架</option>
+        </select>
+
+        <label for="edit-status">狀態</label>
+        <select id="edit-status"></select>
+        <p id="edit-status-hint" class="hint"></p>
+
+        <button type="submit" id="edit-save-button">儲存</button>
+        <button type="button" id="edit-cancel-button" class="btn-secondary">取消</button>
+        <p id="edit-message" class="form-message" role="alert"></p>
+      </form>
+    </section>
+
     <section>
       <h2>器材清單</h2>
+      <p id="action-message" class="form-message" role="alert"></p>
       <ul id="inventory-list" class="inventory-list">
         <li class="card empty">載入中…</li>
       </ul>
@@ -54,8 +82,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script>
     // 請換成你自己的 Supabase 專案資訊（與 login.html 相同）
-    const SUPABASE_URL = "https://wnuuajmemzfkavjgfyux.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_g4SsprAhDW1GMxbtfYYoCg_z32Mfo8Z";
+    const SUPABASE_URL = "https://你的專案代號.supabase.co";
+    const SUPABASE_ANON_KEY = "你的 anon public key";
 
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -66,7 +94,10 @@
       retired: "已報廢"
     };
 
+    // 畫面元素
     const listEl = document.getElementById("inventory-list");
+    const actionMessage = document.getElementById("action-message");
+
     const addSection = document.getElementById("add-section");
     const addForm = document.getElementById("equipment-form");
     const idInput = document.getElementById("equipment-id");
@@ -74,6 +105,21 @@
     const categorySelect = document.getElementById("equipment-category");
     const addButton = document.getElementById("add-button");
     const addMessage = document.getElementById("add-message");
+
+    const editSection = document.getElementById("edit-section");
+    const editForm = document.getElementById("edit-form");
+    const editId = document.getElementById("edit-id");
+    const editName = document.getElementById("edit-name");
+    const editCategory = document.getElementById("edit-category");
+    const editStatus = document.getElementById("edit-status");
+    const editStatusHint = document.getElementById("edit-status-hint");
+    const editSaveButton = document.getElementById("edit-save-button");
+    const editCancelButton = document.getElementById("edit-cancel-button");
+    const editMessage = document.getElementById("edit-message");
+
+    // 狀態
+    let isStaffUser = false;
+    let editingId = null;
 
     function isStaff(user) {
       return Boolean(user && user.app_metadata && user.app_metadata.role === "staff");
@@ -85,6 +131,15 @@
       li.className = "card empty";
       li.textContent = text;
       listEl.appendChild(li);
+    }
+
+    function makeButton(label, className, onClick) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn-small " + className;
+      button.textContent = label;
+      button.addEventListener("click", onClick);
+      return button;
     }
 
     function renderEquipment(items) {
@@ -100,6 +155,7 @@
         li.className = "card equipment-item";
 
         const text = document.createElement("div");
+        text.className = "item-main";
 
         const title = document.createElement("h3");
         title.textContent = item.name;
@@ -110,12 +166,43 @@
         text.appendChild(title);
         text.appendChild(info);
 
+        const side = document.createElement("div");
+        side.className = "item-side";
+
         const badge = document.createElement("span");
         badge.className = "status status-" + item.status;
         badge.textContent = STATUS_LABELS[item.status] || item.status;
+        side.appendChild(badge);
+
+        if (isStaffUser) {
+          const actions = document.createElement("div");
+          actions.className = "item-actions";
+
+          actions.appendChild(makeButton("修改", "btn-secondary", function () {
+            startEdit(item);
+          }));
+
+          if (item.status === "retired") {
+            actions.appendChild(makeButton("還原", "btn-secondary", function () {
+              restoreEquipment(item);
+            }));
+          } else if (item.status !== "borrowed") {
+            actions.appendChild(makeButton("報廢", "btn-warning", function () {
+              retireEquipment(item);
+            }));
+          }
+
+          if (item.status !== "borrowed") {
+            actions.appendChild(makeButton("刪除", "btn-danger", function () {
+              deleteEquipment(item);
+            }));
+          }
+
+          side.appendChild(actions);
+        }
 
         li.appendChild(text);
-        li.appendChild(badge);
+        li.appendChild(side);
         listEl.appendChild(li);
       });
     }
@@ -138,9 +225,11 @@
     async function checkStaff() {
       const { data } = await sb.auth.getSession();
       const session = data.session;
-      addSection.hidden = !(session && isStaff(session.user));
+      isStaffUser = Boolean(session && isStaff(session.user));
+      addSection.hidden = !isStaffUser;
     }
 
+    // ---------- 新增 ----------
     addForm.addEventListener("submit", async function (event) {
       event.preventDefault();
       addMessage.textContent = "";
@@ -176,13 +265,183 @@
       loadEquipment();
     });
 
-    sb.auth.onAuthStateChange(function () {
-      checkStaff();
+    // ---------- 修改 ----------
+    function fillStatusOptions(item) {
+      editStatus.innerHTML = "";
+      editStatusHint.textContent = "";
+
+      if (item.status === "borrowed" || item.status === "retired") {
+        const option = document.createElement("option");
+        option.value = item.status;
+        option.textContent = STATUS_LABELS[item.status];
+        editStatus.appendChild(option);
+        editStatus.disabled = true;
+        editStatusHint.textContent = item.status === "borrowed"
+          ? "借出中的狀態由借還管理自動更新，無法在此修改。"
+          : "已報廢的器材請使用清單上的「還原」按鈕。";
+        return;
+      }
+
+      ["available", "repair"].forEach(function (value) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = STATUS_LABELS[value];
+        editStatus.appendChild(option);
+      });
+      editStatus.value = item.status;
+      editStatus.disabled = false;
+    }
+
+    function startEdit(item) {
+      editingId = item.equipment_id;
+      editId.value = item.equipment_id;
+      editName.value = item.name;
+      editCategory.value = item.category;
+      fillStatusOptions(item);
+      editMessage.textContent = "";
+      actionMessage.textContent = "";
+      editSection.hidden = false;
+      editSection.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function closeEdit() {
+      editingId = null;
+      editSection.hidden = true;
+      editMessage.textContent = "";
+    }
+
+    editCancelButton.addEventListener("click", closeEdit);
+
+    editForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      editMessage.textContent = "";
+
+      const name = editName.value.trim();
+      const category = editCategory.value;
+
+      if (!editingId || !name || !category) {
+        editMessage.textContent = "請完整填寫所有欄位。";
+        return;
+      }
+
+      const payload = { name: name, category: category };
+      if (!editStatus.disabled) {
+        payload.status = editStatus.value;
+      }
+
+      editSaveButton.disabled = true;
+
+      const { data, error } = await sb
+        .from("equipment")
+        .update(payload)
+        .eq("equipment_id", editingId)
+        .select();
+
+      editSaveButton.disabled = false;
+
+      if (error || !data || data.length === 0) {
+        editMessage.textContent = "修改失敗，請確認已登入助教帳號。";
+        console.error(error);
+        return;
+      }
+
+      closeEdit();
       loadEquipment();
     });
 
-    checkStaff();
-    loadEquipment();
+    // ---------- 報廢 / 還原 / 刪除 ----------
+    async function retireEquipment(item) {
+      actionMessage.textContent = "";
+      const ok = confirm(
+        "確定要報廢「" + item.name + "」（" + item.equipment_id + "）嗎？\n報廢後不能借出，之後可以按「還原」恢復。"
+      );
+      if (!ok) {
+        return;
+      }
+
+      const { data, error } = await sb
+        .from("equipment")
+        .update({ status: "retired", retired_at: new Date().toISOString() })
+        .eq("equipment_id", item.equipment_id)
+        .select();
+
+      if (error || !data || data.length === 0) {
+        actionMessage.textContent = "報廢失敗，請確認已登入助教帳號。";
+        console.error(error);
+        return;
+      }
+
+      loadEquipment();
+    }
+
+    async function restoreEquipment(item) {
+      actionMessage.textContent = "";
+      const ok = confirm(
+        "確定要還原「" + item.name + "」（" + item.equipment_id + "）嗎？\n還原後狀態會變成「可借」。"
+      );
+      if (!ok) {
+        return;
+      }
+
+      const { data, error } = await sb
+        .from("equipment")
+        .update({ status: "available", retired_at: null })
+        .eq("equipment_id", item.equipment_id)
+        .select();
+
+      if (error || !data || data.length === 0) {
+        actionMessage.textContent = "還原失敗，請確認已登入助教帳號。";
+        console.error(error);
+        return;
+      }
+
+      loadEquipment();
+    }
+
+    async function deleteEquipment(item) {
+      actionMessage.textContent = "";
+      const ok = confirm(
+        "【警告】確定要永久刪除「" + item.name + "」（" + item.equipment_id + "）嗎？\n\n" +
+        "刪除後無法復原。\n若此器材已有借用紀錄，系統會拒絕刪除，請改用「報廢」。"
+      );
+      if (!ok) {
+        return;
+      }
+
+      const { data, error } = await sb
+        .from("equipment")
+        .delete()
+        .eq("equipment_id", item.equipment_id)
+        .select();
+
+      if (error) {
+        if (error.code === "23503") {
+          actionMessage.textContent = "此器材已有借用紀錄，無法刪除，請改用「報廢」。";
+        } else {
+          actionMessage.textContent = "刪除失敗，請確認已登入助教帳號。";
+        }
+        console.error(error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        actionMessage.textContent = "刪除失敗，請確認已登入助教帳號。";
+        return;
+      }
+
+      if (editingId === item.equipment_id) {
+        closeEdit();
+      }
+      loadEquipment();
+    }
+
+    // ---------- 啟動 ----------
+    async function init() {
+      await checkStaff();
+      await loadEquipment();
+    }
+
+    init();
   </script>
 </body>
 </html>
