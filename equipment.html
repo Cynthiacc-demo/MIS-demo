@@ -135,4 +135,54 @@
       renderEquipment(data);
     }
 
-    async
+    async function checkStaff() {
+      const { data } = await sb.auth.getSession();
+      const session = data.session;
+      addSection.hidden = !(session && isStaff(session.user));
+    }
+
+    addForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      addMessage.textContent = "";
+
+      const equipmentId = idInput.value.trim();
+      const name = nameInput.value.trim();
+      const category = categorySelect.value;
+
+      if (!equipmentId || !name || !category) {
+        addMessage.textContent = "請完整填寫所有欄位。";
+        return;
+      }
+
+      addButton.disabled = true;
+
+      const { error } = await sb
+        .from("equipment")
+        .insert({ equipment_id: equipmentId, name: name, category: category });
+
+      addButton.disabled = false;
+
+      if (error) {
+        if (error.code === "23505") {
+          addMessage.textContent = "此設備編號已存在。";
+        } else {
+          addMessage.textContent = "新增失敗，請確認已登入助教帳號。";
+        }
+        console.error(error);
+        return;
+      }
+
+      addForm.reset();
+      loadEquipment();
+    });
+
+    sb.auth.onAuthStateChange(function () {
+      checkStaff();
+      loadEquipment();
+    });
+
+    checkStaff();
+    loadEquipment();
+  </script>
+</body>
+</html>
