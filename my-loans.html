@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的借用紀錄｜資管系器材借用系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <ul>
+      <li><a href="index.html">首頁</a></li>
+      <li><a href="equipment.html">設備管理</a></li>
+      <li><a href="loans.html">借還管理</a></li>
+      <li><a href="report.html">借用統計</a></li>
+      <li><a href="my-loans.html" aria-current="page">我的借用紀錄</a></li>
+      <li><a href="login.html">助教登入</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <h1 class="page-title">我的借用紀錄</h1>
+
+    <section id="login-area" hidden>
+      <form id="login-form" class="card auth-form">
+        <label for="login-email">學校信箱</label>
+        <input type="email" id="login-email" autocomplete="username" required>
+
+        <label for="login-password">密碼</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+
+        <button type="submit" id="login-button">登入</button>
+        <p id="login-message" class="form-message" role="alert"></p>
+      </form>
+      <p class="hint" style="text-align:center">還沒有帳號？<a href="register.html">學生註冊</a></p>
+    </section>
+
+    <section id="member-area" hidden>
+      <div class="card auth-form" style="max-width:none">
+        <p id="member-text"></p>
+        <button type="button" id="logout-button">登出</button>
+      </div>
+
+      <h2 style="margin-top:32px">借用中</h2>
+      <ul id="open-list" class="inventory-list"></ul>
+
+      <h2 style="margin-top:32px">已歸還</h2>
+      <ul id="history-list" class="inventory-list"></ul>
+    </section>
+
+    <p id="page-message" class="card empty">載入中…</p>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script>
+    // 請換成你自己的 Supabase 專案資訊（與其他頁面相同）
+    const SUPABASE_URL = "https://wnuuajmemzfkavjgfyux.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_g4SsprAhDW1GMxbtfYYoCg_z32Mfo8Z";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const pageMessage = document.getElementById("page-message");
+    const loginArea = document.getElementById("login-area");
+    const memberArea = document.getElementById("member-area");
+    const loginForm = document.getElementById("login-form");
+    const emailInput = document.getElementById("login-email");
+    const passwordInput = document.getElementById("login-password");
+    const loginButton = document.getElementById("login-button");
+    const loginMessage = document.getElementById("login-message");
+    const memberText = document.getElementById("member-text");
+    const logoutButton = document.getElementById("logout-button");
+    const openList = document.getElementById("open-list");
+    const historyList = document.getElementById("history-list");
+
+    function formatTime(value) {
+      return value ? new Date(value).toLocaleString("zh-TW", { hour12: false }) : "";
+    }
+
+    function addEmpty(listEl, text) {
+      const li = document.createElement("li");
+      li.className = "card empty";
+      li.textContent = text;
+      listEl.appendChild(li);
+    }
+
+    function makeCard(loan) {
+      const li = document.createElement("li");
+      li.className = "card equipment-item";
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const title = document.createElement("h3");
+      const name = loan.equipment ? loan.equipment.name : "";
+      title.textContent = name + "（" + loan.equipment_id + "）";
+      main.appendChild(title);
+
+      const lines = [
+        "借出：" + formatTime(loan.borrowed_at),
+        "應還：" + formatTime(loan.due_at)
+      ];
+      if (loan.returned_at) {
+        lines.push("歸還：" + formatTime(loan.returned_at));
+      }
+      lines.forEach(function (text) {
+        const p = document.createElement("p");
+        p.textContent = text;
+        main.appendChild(p);
+      });
+
+      const badge = document.createElement("span");
+      if (loan.returned_at) {
+        badge.className = "status status-available";
+        badge.textContent = "已歸還";
+      } else if (new Date(loan.due_at) < new Date()) {
+        badge.className = "status status-overdue";
+        badge.textContent = "已逾期";
+      } else {
+        badge.className = "status status-borrowed";
+        badge.textContent = "借用中";
+      }
+
+      li.appendChild(main);
+      li.appendChild(badge);
+      return li;
+    }
+
+    async function showMember(user) {
+      const { data: profile, error: profileError } = await sb
+        .from("profiles")
+        .select("student_id, name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        console.error(profileError);
+        loginArea.hidden = true;
+        memberArea.hidden = true;
+        pageMessage.hidden = false;
+        pageMessage.textContent = "此帳號沒有學生資料，無法查詢借用紀錄。";
+        const logout = document.createElement("button");
+        logout.type = "button";
+        logout.textContent = "登出";
+        logout.addEventListener("click", async function () {
+          await sb.auth.signOut();
+          location.reload();
+        });
+        pageMessage.appendChild(document.createElement("br"));
+        pageMessage.appendChild(logout);
+        return;
+      }
+
+      const { data: loans, error } = await sb
+        .from("loans")
+        .select("loan_id, equipment_id, borrowed_at, due_at, returned_at, equipment(name)")
+        .eq("student_id", profile.student_id)
+        .order("borrowed_at", { ascending: false });
+
+      pageMessage.hidden = true;
+      loginArea.hidden = true;
+      memberArea.hidden = false;
+      memberText.textContent = profile.name + "（" + profile.student_id + "）";
+
+      openList.innerHTML = "";
+      historyList.innerHTML = "";
+
+      if (error) {
+        console.error(error);
+        addEmpty(openList, "無法載入借用紀錄，請稍後再試。");
+        return;
+      }
+
+      const open = loans.filter(function (l) { return !l.returned_at; });
+      const done = loans.filter(function (l) { return l.returned_at; });
+
+      if (open.length === 0) {
+        addEmpty(openList, "目前沒有借用中的器材。");
+      }
+      open.forEach(function (l) { openList.appendChild(makeCard(l)); });
+
+      if (done.length === 0) {
+        addEmpty(historyList, "目前沒有已歸還的紀錄。");
+      }
+      done.forEach(function (l) { historyList.appendChild(makeCard(l)); });
+    }
+
+    function showLogin() {
+      pageMessage.hidden = true;
+      memberArea.hidden = true;
+      loginArea.hidden = false;
+    }
+
+    loginForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      loginMessage.textContent = "";
+      loginButton.disabled = true;
+
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: emailInput.value.trim().toLowerCase(),
+        password: passwordInput.value
+      });
+
+      loginButton.disabled = false;
+
+      if (error) {
+        console.error(error);
+        loginMessage.textContent = error.code === "email_not_confirmed"
+          ? "信箱尚未驗證，請先到學校信箱點擊驗證連結。"
+          : "登入失敗：帳號或密碼錯誤。";
+        return;
+      }
+
+      passwordInput.value = "";
+      await showMember(data.user);
+    });
+
+    logoutButton.addEventListener("click", async function () {
+      await sb.auth.signOut();
+      location.reload();
+    });
+
+    async function init() {
+      const { data } = await sb.auth.getSession();
+      if (data.session) {
+        await showMember(data.session.user);
+      } else {
+        showLogin();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
