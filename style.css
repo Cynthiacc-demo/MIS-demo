@@ -314,3 +314,5 @@ footer p {
 .btn-primary {
   background: var(--accent);
 }
+
+.status-overdue { background: #c53030; }
