@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>學生註冊｜資管系器材借用系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <ul>
+      <li><a href="index.html">首頁</a></li>
+      <li><a href="equipment.html">設備管理</a></li>
+      <li><a href="loans.html">借還管理</a></li>
+      <li><a href="report.html">借用統計</a></li>
+      <li><a href="my-loans.html">我的借用紀錄</a></li>
+      <li><a href="login.html">助教登入</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <h1 class="page-title">學生註冊</h1>
+
+    <section>
+      <form id="register-form" class="card auth-form">
+        <label for="reg-email">學校信箱（@o365.au.edu.tw）</label>
+        <input type="email" id="reg-email" autocomplete="username" required>
+
+        <label for="reg-name">姓名（請填與學生證相同的全名）</label>
+        <input type="text" id="reg-name" autocomplete="name" required>
+
+        <label for="reg-password">密碼（至少 8 個字元）</label>
+        <input type="password" id="reg-password" minlength="8" autocomplete="new-password" required>
+
+        <p class="hint">學號會依信箱自動取得。姓名註冊後無法自行修改，填錯請洽系辦。蒐集的姓名與學號僅用於器材借用管理。</p>
+
+        <button type="submit" id="reg-button">註冊</button>
+        <p id="reg-message" class="form-message" role="alert"></p>
+      </form>
+      <p class="hint" style="text-align:center">已經註冊過？<a href="my-loans.html">前往登入</a></p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script>
+    // 請換成你自己的 Supabase 專案資訊（與其他頁面相同）
+    const SUPABASE_URL = "https://wnuuajmemzfkavjgfyux.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_g4SsprAhDW1GMxbtfYYoCg_z32Mfo8Z";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const DOMAIN = "@o365.au.edu.tw";
+
+    const form = document.getElementById("register-form");
+    const emailInput = document.getElementById("reg-email");
+    const nameInput = document.getElementById("reg-name");
+    const passwordInput = document.getElementById("reg-password");
+    const button = document.getElementById("reg-button");
+    const message = document.getElementById("reg-message");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      message.style.color = "";
+      message.textContent = "";
+
+      const email = emailInput.value.trim().toLowerCase();
+      const name = nameInput.value.trim();
+
+      if (!email.endsWith(DOMAIN)) {
+        message.textContent = "請使用學校信箱（" + DOMAIN + "）註冊。";
+        return;
+      }
+      if (!name) {
+        message.textContent = "請填寫姓名。";
+        return;
+      }
+
+      button.disabled = true;
+
+      const { error } = await sb.auth.signUp({
+        email: email,
+        password: passwordInput.value,
+        options: {
+          data: { name: name },
+          emailRedirectTo: new URL("my-loans.html", window.location.href).href
+        }
+      });
+
+      button.disabled = false;
+
+      if (error) {
+        console.error(error);
+        message.textContent = "註冊失敗，請確認使用學校信箱，且密碼至少 8 個字元。";
+        return;
+      }
+
+      form.reset();
+      message.style.color = "#2f855a";
+      message.textContent = "註冊成功！請到學校信箱收驗證信，點擊連結完成驗證後即可登入。";
+    });
+  </script>
+</body>
+</html>
