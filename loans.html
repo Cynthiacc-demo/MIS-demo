@@ -19,6 +19,332 @@
 
   <main>
     <h1 class="page-title">借還管理</h1>
+
+    <section id="gate">
+      <p class="card empty">載入中…</p>
+    </section>
+
+    <div id="staff-area" hidden>
+      <section>
+        <h2>借出登記</h2>
+        <form id="lend-form" class="card auth-form">
+          <label for="lend-equipment">器材（僅列出可借的器材）</label>
+          <select id="lend-equipment" required></select>
+
+          <label for="lend-student-id">學號</label>
+          <input type="text" id="lend-student-id" autocomplete="off" required>
+
+          <label for="lend-student-name">姓名（請對照學生證）</label>
+          <input type="text" id="lend-student-name" autocomplete="off" required>
+
+          <label for="lend-student-phone">電話（催還用）</label>
+          <input type="tel" id="lend-student-phone" autocomplete="off" required>
+
+          <label for="lend-days">借用天數</label>
+          <select id="lend-days">
+            <option value="1">1 天</option>
+            <option value="2">2 天</option>
+            <option value="3">3 天</option>
+            <option value="4">4 天</option>
+            <option value="5">5 天</option>
+            <option value="6">6 天</option>
+            <option value="7" selected>7 天（最長）</option>
+          </select>
+
+          <button type="submit" id="lend-button">借出</button>
+          <p id="lend-message" class="form-message" role="alert"></p>
+        </form>
+      </section>
+
+      <section>
+        <h2>目前借出中</h2>
+        <p id="action-message" class="form-message" role="alert"></p>
+        <ul id="open-list" class="inventory-list"></ul>
+      </section>
+
+      <section>
+        <h2>歷史紀錄（最近 50 筆已歸還）</h2>
+        <ul id="history-list" class="inventory-list"></ul>
+      </section>
+    </div>
   </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script>
+    // 請換成你自己的 Supabase 專案資訊（與其他頁面相同）
+    const SUPABASE_URL = "https://你的專案代號.supabase.co";
+    const SUPABASE_ANON_KEY = "你的 anon public key";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const gate = document.getElementById("gate");
+    const staffArea = document.getElementById("staff-area");
+
+    const lendForm = document.getElementById("lend-form");
+    const equipmentSelect = document.getElementById("lend-equipment");
+    const studentIdInput = document.getElementById("lend-student-id");
+    const studentNameInput = document.getElementById("lend-student-name");
+    const studentPhoneInput = document.getElementById("lend-student-phone");
+    const daysSelect = document.getElementById("lend-days");
+    const lendButton = document.getElementById("lend-button");
+    const lendMessage = document.getElementById("lend-message");
+
+    const actionMessage = document.getElementById("action-message");
+    const openList = document.getElementById("open-list");
+    const historyList = document.getElementById("history-list");
+
+    function isStaff(user) {
+      return Boolean(user && user.app_metadata && user.app_metadata.role === "staff");
+    }
+
+    function formatTime(value) {
+      if (!value) {
+        return "";
+      }
+      return new Date(value).toLocaleString("zh-TW", { hour12: false });
+    }
+
+    function errorText(error, fallback) {
+      // 資料庫函式主動丟出的錯誤（P0001）訊息可直接顯示
+      if (error && error.code === "P0001") {
+        return error.message;
+      }
+      if (error && error.code === "23505") {
+        return "此器材已有未歸還的借用紀錄。";
+      }
+      return fallback;
+    }
+
+    function addEmpty(listEl, text) {
+      const li = document.createElement("li");
+      li.className = "card empty";
+      li.textContent = text;
+      listEl.appendChild(li);
+    }
+
+    function makeLoanCard(loan, withReturnButton) {
+      const li = document.createElement("li");
+      li.className = "card equipment-item";
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const title = document.createElement("h3");
+      const equipmentName = loan.equipment ? loan.equipment.name : "";
+      title.textContent = equipmentName + "（" + loan.equipment_id + "）";
+
+      const who = document.createElement("p");
+      who.textContent = "借用人：" + loan.student_name + "（" + loan.student_id + "）　電話：" + loan.student_phone;
+
+      const borrowed = document.createElement("p");
+      borrowed.textContent = "借出：" + formatTime(loan.borrowed_at);
+
+      main.appendChild(title);
+      main.appendChild(who);
+      main.appendChild(borrowed);
+
+      const due = document.createElement("p");
+      due.textContent = "應還：" + formatTime(loan.due_at);
+      main.appendChild(due);
+
+      if (loan.returned_at) {
+        const returned = document.createElement("p");
+        returned.textContent = "歸還：" + formatTime(loan.returned_at);
+        main.appendChild(returned);
+      }
+
+      li.appendChild(main);
+
+      if (withReturnButton) {
+        const side = document.createElement("div");
+        side.className = "item-side";
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn-small btn-primary";
+        button.textContent = "歸還";
+        button.addEventListener("click", function () {
+          returnLoan(loan);
+        });
+
+        side.appendChild(button);
+        li.appendChild(side);
+      }
+
+      return li;
+    }
+
+    async function loadAvailableEquipment() {
+      const { data, error } = await sb
+        .from("equipment")
+        .select("equipment_id, name")
+        .eq("status", "available")
+        .order("equipment_id", { ascending: true });
+
+      equipmentSelect.innerHTML = "";
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      if (data.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "目前沒有可借的器材";
+        equipmentSelect.appendChild(option);
+        return;
+      }
+
+      data.forEach(function (item) {
+        const option = document.createElement("option");
+        option.value = item.equipment_id;
+        option.textContent = item.name + "（" + item.equipment_id + "）";
+        equipmentSelect.appendChild(option);
+      });
+    }
+
+    async function loadOpenLoans() {
+      const { data, error } = await sb
+        .from("loans")
+        .select("*, equipment(name)")
+        .is("returned_at", null)
+        .order("due_at", { ascending: true });
+
+      openList.innerHTML = "";
+
+      if (error) {
+        addEmpty(openList, "無法載入借用紀錄。");
+        console.error(error);
+        return;
+      }
+
+      if (data.length === 0) {
+        addEmpty(openList, "目前沒有借出中的器材。");
+        return;
+      }
+
+      data.forEach(function (loan) {
+        openList.appendChild(makeLoanCard(loan, true));
+      });
+    }
+
+    async function loadHistory() {
+      const { data, error } = await sb
+        .from("loans")
+        .select("*, equipment(name)")
+        .not("returned_at", "is", null)
+        .order("returned_at", { ascending: false })
+        .limit(50);
+
+      historyList.innerHTML = "";
+
+      if (error) {
+        addEmpty(historyList, "無法載入歷史紀錄。");
+        console.error(error);
+        return;
+      }
+
+      if (data.length === 0) {
+        addEmpty(historyList, "目前沒有已歸還的紀錄。");
+        return;
+      }
+
+      data.forEach(function (loan) {
+        historyList.appendChild(makeLoanCard(loan, false));
+      });
+    }
+
+    async function reloadAll() {
+      await Promise.all([loadAvailableEquipment(), loadOpenLoans(), loadHistory()]);
+    }
+
+    lendForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      lendMessage.textContent = "";
+      actionMessage.textContent = "";
+
+      const equipmentId = equipmentSelect.value;
+      const studentId = studentIdInput.value.trim();
+      const studentName = studentNameInput.value.trim();
+      const studentPhone = studentPhoneInput.value.trim();
+      const days = Number(daysSelect.value);
+
+      if (!equipmentId || !studentId || !studentName || !studentPhone) {
+        lendMessage.textContent = "請完整填寫所有欄位。";
+        return;
+      }
+
+      lendButton.disabled = true;
+
+      const { error } = await sb.rpc("lend_equipment", {
+        p_equipment_id: equipmentId,
+        p_student_id: studentId,
+        p_student_name: studentName,
+        p_student_phone: studentPhone,
+        p_days: days
+      });
+
+      lendButton.disabled = false;
+
+      if (error) {
+        lendMessage.textContent = errorText(error, "借出失敗，請確認已登入助教帳號。");
+        console.error(error);
+        await reloadAll();
+        return;
+      }
+
+      lendForm.reset();
+      daysSelect.value = "7";
+      await reloadAll();
+    });
+
+    async function returnLoan(loan) {
+      actionMessage.textContent = "";
+
+      const ok = confirm(
+        "確定要登記歸還嗎？\n器材：" + loan.equipment_id + "\n借用人：" + loan.student_name + "（" + loan.student_id + "）"
+      );
+      if (!ok) {
+        return;
+      }
+
+      const { error } = await sb.rpc("return_loan", { p_loan_id: loan.loan_id });
+
+      if (error) {
+        actionMessage.textContent = errorText(error, "歸還失敗，請確認已登入助教帳號。");
+        console.error(error);
+        await reloadAll();
+        return;
+      }
+
+      await reloadAll();
+    }
+
+    async function init() {
+      const { data } = await sb.auth.getSession();
+      const session = data.session;
+
+      if (!(session && isStaff(session.user))) {
+        gate.innerHTML = "";
+        const p = document.createElement("p");
+        p.className = "card empty";
+        p.appendChild(document.createTextNode("此頁面僅限助教使用，請先到 "));
+        const link = document.createElement("a");
+        link.href = "login.html";
+        link.textContent = "助教登入";
+        p.appendChild(link);
+        p.appendChild(document.createTextNode(" 頁面登入。"));
+        gate.appendChild(p);
+        return;
+      }
+
+      gate.hidden = true;
+      staffArea.hidden = false;
+      await reloadAll();
+    }
+
+    init();
+  </script>
 </body>
 </html>
