@@ -34,9 +34,10 @@
 
           <label for="lend-student-id">學號</label>
           <input type="text" id="lend-student-id" autocomplete="off" required>
+          <button type="button" id="lookup-button" class="btn-secondary">查詢姓名</button>
 
-          <label for="lend-student-name">姓名（請對照學生證）</label>
-          <input type="text" id="lend-student-name" autocomplete="off" required>
+          <label for="lend-student-name">姓名（系統帶入，請對照學生證）</label>
+          <input type="text" id="lend-student-name" readonly placeholder="請先查詢學號">
 
           <label for="lend-student-phone">電話（催還用）</label>
           <input type="tel" id="lend-student-phone" autocomplete="off" required>
@@ -89,6 +90,46 @@
     const daysSelect = document.getElementById("lend-days");
     const lendButton = document.getElementById("lend-button");
     const lendMessage = document.getElementById("lend-message");
+
+    const lookupButton = document.getElementById("lookup-button");
+    let verifiedStudentId = "";
+
+    async function lookupStudent() {
+      lendMessage.textContent = "";
+      studentNameInput.value = "";
+      verifiedStudentId = "";
+
+      const sid = studentIdInput.value.trim().toLowerCase();
+      if (!sid) {
+        lendMessage.textContent = "請先輸入學號。";
+        return false;
+      }
+
+      const { data, error } = await sb.rpc("lookup_student", { p_student_id: sid });
+
+      if (error) {
+        console.error(error);
+        lendMessage.textContent = "查詢失敗，請確認已登入助教帳號。";
+        return false;
+      }
+
+      if (!data) {
+        lendMessage.textContent = "查無此學號，請學生先註冊。";
+        return false;
+      }
+
+      studentNameInput.value = data;
+      verifiedStudentId = sid;
+      return true;
+    }
+
+    lookupButton.addEventListener("click", lookupStudent);
+
+    // 學號一改，就要重新查詢，避免姓名和學號對不上
+    studentIdInput.addEventListener("input", function () {
+      studentNameInput.value = "";
+      verifiedStudentId = "";
+    });
 
     const actionMessage = document.getElementById("action-message");
     const openList = document.getElementById("open-list");
@@ -266,13 +307,28 @@
       actionMessage.textContent = "";
 
       const equipmentId = equipmentSelect.value;
-      const studentId = studentIdInput.value.trim();
-      const studentName = studentNameInput.value.trim();
+      const studentId = studentIdInput.value.trim().toLowerCase();
       const studentPhone = studentPhoneInput.value.trim();
       const days = Number(daysSelect.value);
 
-      if (!equipmentId || !studentId || !studentName || !studentPhone) {
+      if (!equipmentId || !studentId || !studentPhone) {
         lendMessage.textContent = "請完整填寫所有欄位。";
+        return;
+      }
+
+      // 沒查詢過、或查詢後又改了學號，就先自動查詢一次
+      if (verifiedStudentId !== studentId) {
+        const found = await lookupStudent();
+        if (!found) {
+          return;
+        }
+      }
+
+      const ok = confirm(
+        "請對照學生證，確認借用人：\n" +
+        studentNameInput.value + "（" + studentId + "）\n\n確定要借出嗎？"
+      );
+      if (!ok) {
         return;
       }
 
@@ -281,7 +337,6 @@
       const { error } = await sb.rpc("lend_equipment", {
         p_equipment_id: equipmentId,
         p_student_id: studentId,
-        p_student_name: studentName,
         p_student_phone: studentPhone,
         p_days: days
       });
@@ -296,6 +351,7 @@
       }
 
       lendForm.reset();
+      verifiedStudentId = "";
       daysSelect.value = "7";
       await reloadAll();
     });
